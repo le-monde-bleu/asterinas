@@ -144,7 +144,8 @@ impl CloneArgs {
 
     pub fn for_vfork() -> Self {
         Self {
-            flags: CloneFlags::CLONE_VFORK | CloneFlags::CLONE_VM,
+            // FIXME: Should be CloneFlags::CLONE_VFORK | CloneFlags::CLONE_VM
+            flags: CloneFlags::CLONE_VFORK,
             exit_signal: Some(SIGCHLD),
             ..Default::default()
         }
@@ -226,17 +227,9 @@ fn clone_child_task(
 
     let child_user_space = {
         let child_vm_space = child_root_vmar.vm_space().clone();
-        let child_sp = {
-            if !clone_flags.contains(CloneFlags::CLONE_VFORK) {
-                clone_args.stack
-            }
-            else {
-                parent_context.stack_pointer().try_into().unwrap()
-            }
-        };
         let child_cpu_context = clone_cpu_context(
             parent_context,
-            child_sp,
+            clone_args.stack,
             clone_args.stack_size,
             clone_args.tls,
             clone_flags,
@@ -292,17 +285,9 @@ fn clone_child_process(
 
     // clone user space
     let child_user_space = {
-        let child_sp = {
-            if !clone_flags.contains(CloneFlags::CLONE_VFORK) {
-                clone_args.stack
-            }
-            else {
-                parent_context.stack_pointer().try_into().unwrap()
-            }
-        };
         let child_cpu_context = clone_cpu_context(
             parent_context,
-            child_sp,
+            clone_args.stack,
             clone_args.stack_size,
             clone_args.tls,
             clone_flags,
