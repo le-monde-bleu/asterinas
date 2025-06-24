@@ -32,6 +32,11 @@ void create_child_process(const char *label, int level) {
 int main() {
 	printf("Testing multi-level fork:\n");
 	print_process_info("Parent");
-	create_child_process("Level1", 2); // Create a 3-level process hierarchy
+	create_child_process("Level0", 0); // Create a 1-level process hierarchy
+	create_child_process("Level1", 1); // Create a 2-level process hierarchy
+	create_child_process("Level2", 2); // Create a 3-level process hierarchy
+	create_child_process("Level3", 3); // Create a 4-level process hierarchy
+	create_child_process("Level10", 10); // Create a 11-level process hierarchy
+	create_child_process("Level50", 50); // Create a 51-level process hierarchy
 	return 0;
 }
