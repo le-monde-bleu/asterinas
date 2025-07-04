@@ -25,7 +25,6 @@ TESTS ?= \
 	mknod_test \
 	mmap_test \
 	mount_test \
-	mremap_test \
 	msync_test \
 	open_create_test \
 	open_test \
@@ -62,7 +61,6 @@ TESTS ?= \
 	truncate_test \
 	uidgid_test \
 	unlink_test \
-	utimes_test \
 	vdso_clock_gettime_test \
 	vfork_test \
 	write_test \

@@ -25,7 +25,9 @@ INITRAMFS_EMPTY_DIRS := \
 	$(INITRAMFS)/dev \
 	$(INITRAMFS)/sys \
 	$(INITRAMFS)/ext2 \
-	$(INITRAMFS)/exfat
+	$(INITRAMFS)/exfat \
+	$(INITRAMFS)/home
+
 INITRAMFS_ALL_DIRS := \
 	$(INITRAMFS)/etc \
 	$(INITRAMFS)/lib/x86_64-linux-gnu \
