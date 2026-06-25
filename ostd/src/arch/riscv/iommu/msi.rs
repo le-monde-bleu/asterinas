@@ -78,4 +78,20 @@ mod tests {
         assert_eq!(pte.pte, 0x0a00_0007);
         assert_eq!(pte.mrif_info, 0);
     }
+
+    #[ktest]
+    fn iommu_flat_msi_page_table_describes_one_interrupt_file() {
+        let page_table = MsiPageTable::new(0x2800_0000).unwrap();
+        let expected_msiptp = MSIPTP_MODE_FLAT << 60 | (page_table.root_paddr() >> 12) as u64;
+
+        assert_eq!(page_table.root_paddr() % 4096, 0);
+        assert_eq!(page_table.msiptp(), expected_msiptp);
+        assert_eq!(page_table.address_mask(), 0);
+        assert_eq!(page_table.address_pattern(), 0x2800_0000 >> 12);
+    }
+
+    #[ktest]
+    fn iommu_rejects_unaligned_msi_message_address() {
+        assert!(MsiPageTable::new(0x2800_0001).is_err());
+    }
 }

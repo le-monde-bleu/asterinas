@@ -190,4 +190,40 @@ mod tests {
             )
         );
     }
+
+    #[ktest]
+    fn iommu_queue_push_reads_back_entry_and_updates_tail() {
+        let mut queue = Queue::<16>::new().unwrap();
+        let entry = [0xa5; 16];
+        let mut read_back = [0; 16];
+
+        assert_eq!(queue.push(0, &entry).unwrap(), 1);
+        assert_eq!(queue.tail(), 1);
+        queue.read_entry(0, &mut read_back).unwrap();
+        assert_eq!(read_back, entry);
+    }
+
+    #[ktest]
+    fn iommu_queue_reports_full_before_overwriting_head() {
+        let mut queue = Queue::<16>::new().unwrap();
+        let entry = [0x5a; 16];
+
+        for expected_tail in 1..queue.capacity {
+            assert_eq!(queue.push(0, &entry).unwrap(), expected_tail);
+        }
+        assert!(matches!(queue.push(0, &entry), Err(QueueError::Full)));
+    }
+
+    #[ktest]
+    fn iommu_queue_wraps_tail_index() {
+        let mut queue = Queue::<16>::new().unwrap();
+        let entry = [0xcc; 16];
+        let mut read_back = [0; 16];
+        let last_index = queue.index_mask();
+
+        queue.tail = last_index;
+        assert_eq!(queue.push(1, &entry).unwrap(), 0);
+        queue.read_entry(last_index, &mut read_back).unwrap();
+        assert_eq!(read_back, entry);
+    }
 }

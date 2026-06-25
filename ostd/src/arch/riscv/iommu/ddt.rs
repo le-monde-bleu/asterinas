@@ -234,4 +234,56 @@ mod tests {
             (0x3f, 0x1ff, 0x1ff)
         );
     }
+
+    #[ktest]
+    fn iommu_base_device_context_points_to_second_stage_root() {
+        let context_format = DeviceContextFormat::Base;
+        let mut ddt = DdtTable::new(context_format).unwrap();
+        let page_table = Sv39x4PageTable::new(56).unwrap();
+        let device_id = 0x1234;
+
+        ddt.enable_device(device_id, &page_table, None).unwrap();
+
+        assert_eq!(ddt.mode(), super::super::registers::DDTP_MODE_2LVL);
+
+        let (ddi0, ddi1, ddi2) = context_format.indices(device_id);
+        let leaf = ddt.get_or_create_leaf(ddi2, ddi1).unwrap();
+        let dc_offset = ddi0 * context_format.size();
+        let tc = leaf.read_val::<u64>(dc_offset).unwrap();
+        let iohgatp = leaf.read_val::<u64>(dc_offset + 8).unwrap();
+        let expected_iohgatp = (IOHGATP_MODE_SV39X4 << 60) | (page_table.root_paddr() >> 12) as u64;
+        assert_eq!(tc, 1);
+        assert_eq!(iohgatp, expected_iohgatp);
+    }
+
+    #[ktest]
+    fn iommu_extended_device_context_contains_msi_translation() {
+        let context_format = DeviceContextFormat::Extended;
+        let mut ddt = DdtTable::new(context_format).unwrap();
+        let page_table = Sv39x4PageTable::new(56).unwrap();
+        let msi_page_table = MsiPageTable::new(0x2800_0000).unwrap();
+        let device_id = 0x8000;
+
+        ddt.enable_device(device_id, &page_table, Some(&msi_page_table))
+            .unwrap();
+
+        assert_eq!(ddt.mode(), super::super::registers::DDTP_MODE_3LVL);
+
+        let (ddi0, ddi1, ddi2) = context_format.indices(device_id);
+        let leaf = ddt.get_or_create_leaf(ddi2, ddi1).unwrap();
+        let dc_offset = ddi0 * context_format.size();
+        assert_eq!(leaf.read_val::<u64>(dc_offset).unwrap(), 1);
+        assert_eq!(
+            leaf.read_val::<u64>(dc_offset + 32).unwrap(),
+            msi_page_table.msiptp()
+        );
+        assert_eq!(
+            leaf.read_val::<u64>(dc_offset + 40).unwrap(),
+            msi_page_table.address_mask()
+        );
+        assert_eq!(
+            leaf.read_val::<u64>(dc_offset + 48).unwrap(),
+            msi_page_table.address_pattern()
+        );
+    }
 }

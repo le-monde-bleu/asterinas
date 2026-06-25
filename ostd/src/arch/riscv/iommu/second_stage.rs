@@ -277,4 +277,42 @@ mod tests {
         assert!(page_indices(0, 1usize << 40, 40).is_err());
         assert!(page_indices(0, (1usize << 40) - PAGE_SIZE, 40).is_ok());
     }
+
+    #[ktest]
+    fn iommu_sv39x4_root_is_16kib_aligned() {
+        let page_table = Sv39x4PageTable::new(MAX_PHYSICAL_ADDRESS_WIDTH).unwrap();
+        assert_eq!(page_table.root_paddr() % ROOT_TABLE_SIZE, 0);
+    }
+
+    #[ktest]
+    fn iommu_sv39x4_map_and_unmap_base_page() {
+        let mut page_table = Sv39x4PageTable::new(MAX_PHYSICAL_ADDRESS_WIDTH).unwrap();
+        let daddr = 0x1234_5000;
+        let paddr = 0x2345_6000;
+        let [root_index, middle_index, leaf_index] =
+            page_indices(daddr, paddr, MAX_PHYSICAL_ADDRESS_WIDTH).unwrap();
+
+        page_table.map(daddr, paddr).unwrap();
+        assert!(matches!(
+            page_table.map(daddr, paddr),
+            Err(SecondStageError::AlreadyMapped)
+        ));
+
+        let root_entry = read_entry(&page_table.root_segment, root_index).unwrap();
+        let middle_frame = page_table.middle_frames.get(&root_entry.paddr()).unwrap();
+        let middle_entry = read_entry(middle_frame, middle_index).unwrap();
+        let leaf_paddr = middle_entry.paddr();
+        let leaf_frame = page_table.leaf_frames.get(&leaf_paddr).unwrap();
+        let leaf_entry = read_entry(leaf_frame, leaf_index).unwrap();
+        assert_eq!(leaf_entry.paddr(), paddr);
+        assert!(leaf_entry.is_valid());
+
+        page_table.unmap(daddr).unwrap();
+        let leaf_frame = page_table.leaf_frames.get(&leaf_paddr).unwrap();
+        assert!(!read_entry(leaf_frame, leaf_index).unwrap().is_valid());
+        assert!(matches!(
+            page_table.unmap(daddr),
+            Err(SecondStageError::NotMapped)
+        ));
+    }
 }
