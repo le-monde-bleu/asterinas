@@ -2,10 +2,7 @@
 
 //! Virtual memory (VM).
 
-#![cfg_attr(
-    any(target_arch = "riscv64", target_arch = "loongarch64"),
-    expect(unused_imports)
-)]
+#![cfg_attr(any(target_arch = "loongarch64"), expect(unused_imports))]
 
 pub mod dma;
 pub mod frame;
@@ -23,6 +20,8 @@ mod test;
 
 use core::fmt::Debug;
 
+#[cfg(target_arch = "x86_64")]
+pub(crate) use self::page_table::PageTable;
 pub use self::{
     frame::{
         Frame,
@@ -43,7 +42,6 @@ pub use self::{
 pub(crate) use self::{
     kspace::paddr_to_vaddr,
     page_prop::{PageTableFlags, PrivilegedPageFlags},
-    page_table::PageTable,
 };
 use crate::arch::mm::PagingConsts;
 

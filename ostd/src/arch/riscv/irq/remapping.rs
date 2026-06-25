@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use crate::arch::iommu::has_interrupt_remapping;
+
 pub(crate) struct IrqRemapping {
     _private: (),
 }
@@ -9,17 +11,12 @@ impl IrqRemapping {
         Self { _private: () }
     }
 
-    /// Initializes the remapping entry for the specific IRQ number.
-    ///
-    /// This will do nothing if the entry is already initialized or interrupt
-    /// remapping is disabled or not supported by the architecture.
+    /// RISC-V flat MSI translation is configured per interrupt file rather
+    /// than per interrupt identity, so no per-IRQ table entry is required.
     pub(crate) fn init(&self, _irq_num: u8) {}
 
-    /// Gets the remapping index of the IRQ line.
-    ///
-    /// This method will return `None` if interrupt remapping is disabled or
-    /// not supported by the architecture.
+    /// Returns the single interrupt-file index when MSI translation is active.
     pub(crate) fn remapping_index(&self) -> Option<u16> {
-        None
+        has_interrupt_remapping().then_some(0)
     }
 }

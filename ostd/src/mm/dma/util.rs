@@ -35,20 +35,23 @@ use crate::{
 struct DmaBufferMeta;
 impl_frame_meta_for!(DmaBufferMeta);
 
-// TODO: Implement other architectures when their `IommuPtConfig` are ready.
-#[cfg(target_arch = "x86_64")]
+// TODO: Implement LoongArch when its `IommuPtConfig` is ready.
+#[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
 mod allocator {
-    use crate::{
-        arch::iommu,
-        irq::DisabledLocalIrqGuard,
-        mm::{PAGE_SIZE, page_table::vaddr_range},
-        util::range_alloc::RangeAllocator,
-    };
+    #[cfg(target_arch = "x86_64")]
+    use crate::arch::iommu;
+    use crate::{irq::DisabledLocalIrqGuard, mm::PAGE_SIZE, util::range_alloc::RangeAllocator};
 
     static DADDR_ALLOCATOR: RangeAllocator = RangeAllocator::new({
-        let range_inclusive = vaddr_range::<iommu::IommuPtConfig>();
-        // To avoid overflowing, just ignore the last page.
-        *range_inclusive.start()..*range_inclusive.end() & !(PAGE_SIZE - 1)
+        #[cfg(target_arch = "x86_64")]
+        let range = {
+            use crate::mm::page_table::vaddr_range;
+            let range_inclusive = vaddr_range::<iommu::IommuPtConfig>();
+            *range_inclusive.start()..*range_inclusive.end() & !(PAGE_SIZE - 1)
+        };
+        #[cfg(target_arch = "riscv64")]
+        let range = 0..(1usize << 41) - PAGE_SIZE;
+        range
     });
 
     /// Returns a reference to the device address allocator.
@@ -277,11 +280,11 @@ unsafe fn dma_remap(pa_range: &Range<Paddr>) -> Option<Daddr> {
 
     let _irq_guard = irq::disable_local();
 
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
     let daddr = allocator::daddr_allocator(&_irq_guard)
         .alloc(pa_range.len())
         .expect("failed to allocate DMA address range");
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "riscv64")))]
     let daddr = pa_range.clone();
 
     for map_paddr in pa_range.clone().step_by(PAGE_SIZE) {
@@ -301,14 +304,13 @@ fn unmap_dma_remap(daddr_range: Option<Range<Daddr>>) {
         return;
     };
 
-    let _irq_gurad = irq::disable_local();
+    let _irq_guard = irq::disable_local();
 
-    // TODO: Free `da_range` to `allocator::daddr_allocator()`. This can only
-    // be done after IOTLB flushes are supported; otherwise, reusing the freed
-    // device address range may cause data corruption.
+    // TODO: Free `da_range` to `allocator::daddr_allocator()`. Keep device
+    // addresses conservative until all architectures guarantee that unmapped
+    // ranges cannot be reused while stale or in-flight DMA may still target them.
 
     for da in da_range.step_by(PAGE_SIZE) {
         iommu::unmap(da).unwrap();
-        // FIXME: Flush IOTLBs to prevent any future DMA access to the frames.
     }
 }
