@@ -26,7 +26,12 @@ VHOST=${VHOST:-"off"}
 VSOCK=${VSOCK:-"off"}
 VIRTIOFS=${VIRTIOFS:-"off"}
 NETDEV=${NETDEV:-"user"}
-CONSOLE=${CONSOLE:-"hvc0"}
+if [ -z "${CONSOLE+x}" ]; then
+    CONSOLE_WAS_DEFAULTED="true"
+    CONSOLE="hvc0"
+else
+    CONSOLE_WAS_DEFAULTED="false"
+fi
 
 ATTACH_XFSTESTS_IMAGES=${ATTACH_XFSTESTS_IMAGES:-false}
 if [ "${ENABLE_CONFORMANCE_TEST:-"false"}" = "true" ] && \
@@ -153,6 +158,39 @@ if [ "$ATTACH_XFSTESTS_IMAGES" = "true" ]; then
 fi
 
 if [ "$1" = "iommu" ]; then
+    if [ "$OSDK_TARGET_ARCH" = "riscv64" ]; then
+        if [ "$CONSOLE_WAS_DEFAULTED" = "true" ]; then
+            CONSOLE="ttyS0"
+        fi
+        if [ "$CONSOLE" = "hvc0" ]; then
+            CONSOLE_ARGS="-device virtconsole,chardev=mux -serial file:qemu-serial.log"
+            MUX_LOG="qemu.log"
+        else
+            CONSOLE_ARGS="-serial chardev:mux"
+            MUX_LOG="qemu-serial.log"
+        fi
+        QEMU_ARGS="\
+            -cpu rv64,svpbmt=true,zkr=true \
+            -machine virt,iommu-sys=on,aia=aplic-imsic \
+            -m ${MEM:-8G} \
+            -smp ${SMP:-1} \
+            --no-reboot \
+            -nographic \
+            -display none \
+            -monitor chardev:mux \
+            -chardev stdio,id=mux,mux=on,signal=off,logfile=$MUX_LOG \
+            -drive if=none,format=raw,id=x0,file=./test/initramfs/build/ext2.img \
+            -drive if=none,format=raw,id=x1,file=./test/initramfs/build/exfat.img \
+            -device virtio-blk-pci,drive=x0,iommu_platform=on,disable-legacy=on \
+            -device virtio-blk-pci,drive=x1,iommu_platform=on,disable-legacy=on \
+            -device virtio-keyboard-pci,iommu_platform=on,disable-legacy=on,disable-modern=off \
+            -device virtio-serial-pci,iommu_platform=on,disable-legacy=on,disable-modern=off \
+            $CONSOLE_ARGS \
+        "
+        echo $QEMU_ARGS
+        exit 0
+    fi
+
     if [ "$OVMF" = "off" ]; then
         echo "Warning: OVMF is off, enabling it for IOMMU support." 1>&2
         OVMF="on"

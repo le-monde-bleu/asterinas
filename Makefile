@@ -172,6 +172,13 @@ endif
 
 ifneq ($(SCHEME), "")
 CARGO_OSDK_COMMON_ARGS += --scheme $(SCHEME)
+# The iommu scheme needs qemu-direct on riscv64 (no UEFI/GRUB).
+# x86_64 keeps the default grub-rescue-iso from OSDK.toml.
+ifeq ($(SCHEME), iommu)
+	ifeq ($(TARGET_ARCH), riscv64)
+	CARGO_OSDK_COMMON_ARGS += --boot-method="qemu-direct"
+	endif
+endif
 else
 CARGO_OSDK_COMMON_ARGS += --boot-method="$(BOOT_METHOD)"
 endif
