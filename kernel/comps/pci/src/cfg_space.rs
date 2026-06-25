@@ -405,7 +405,10 @@ impl MemoryBar {
         // 32 bit register is considered an extension of the first (i.e., bits 63:32). Software
         // writes a value of all 1's to both registers, reads them back, and combines the result
         // into a 64-bit value."
-        #[cfg_attr(target_arch = "loongarch64", expect(unused_variables))]
+        #[cfg_attr(
+            any(target_arch = "loongarch64", target_arch = "riscv64"),
+            expect(unused_variables)
+        )]
         let (raw64, size_encoded64) = match address_length {
             AddrLen::Bits32 => (raw as u64, size_encoded as u64 | ((u32::MAX as u64) << 32)),
             AddrLen::Bits64 => {
@@ -421,10 +424,11 @@ impl MemoryBar {
         let size = decode_size(size_encoded64, BarKind::Memory);
 
         // Restore the original base address.
-        #[cfg(not(target_arch = "loongarch64"))]
+        #[cfg(not(any(target_arch = "loongarch64", target_arch = "riscv64")))]
         let base = raw64 & MEMORY_ADDRESS_MASK;
-        // In LoongArch, the BAR base address needs to be allocated manually.
-        #[cfg(target_arch = "loongarch64")]
+        // On LoongArch and RISC-V, firmware may not assign BAR addresses, so
+        // the kernel must allocate them manually from the MMIO window.
+        #[cfg(any(target_arch = "loongarch64", target_arch = "riscv64"))]
         let base = {
             use core::alloc::Layout;
             crate::arch::alloc_mmio(Layout::from_size_align(size as usize, size as usize).unwrap())

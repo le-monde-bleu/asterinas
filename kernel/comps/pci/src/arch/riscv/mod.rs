@@ -2,9 +2,13 @@
 
 //! PCI bus access
 
-use core::ops::RangeInclusive;
+use core::{alloc::Layout, ops::RangeInclusive};
 
-use ostd::{Error, arch::boot::DEVICE_TREE, io::IoMem, mm::VmIoOnce, warn};
+use align_ext::AlignExt;
+use fdt::node::FdtNode;
+use ostd::{
+    Error, arch::boot::DEVICE_TREE, io::IoMem, mm::VmIoOnce, prelude::Paddr, sync::SpinLock, warn,
+};
 use spin::Once;
 
 use crate::PciDeviceLocation;
@@ -101,6 +105,9 @@ pub(crate) fn init() -> Option<RangeInclusive<u8>> {
         Some(0..=255)
     };
 
+    // Initialize the MMIO allocator.
+    init_mmio_allocator_from_fdt(&pci);
+
     let addr_start = region.starting_address as usize;
     let addr_end = addr_start.checked_add(region.size.unwrap()).unwrap();
     PCI_ECAM_CFG_SPACE.call_once(|| IoMem::acquire(addr_start..addr_end).unwrap());
@@ -108,8 +115,98 @@ pub(crate) fn init() -> Option<RangeInclusive<u8>> {
     bus_range
 }
 
-pub(crate) const MSIX_DEFAULT_MSG_ADDR: u32 = 0x2400_0000;
+/// A simple MMIO allocator managing a linear region.
+///
+/// On RISC-V, OpenSBI does not assign PCI BAR addresses, so the kernel must
+/// allocate them from the CPU-address MMIO window described by the device
+/// tree's `ranges` property.
+struct MmioAllocator {
+    base: Paddr,
+    size: Paddr,
+    offset: Paddr,
+}
 
-pub(crate) fn construct_remappable_msix_address(_remapping_index: u32) -> u32 {
-    unimplemented!()
+impl MmioAllocator {
+    /// Creates a new MMIO allocator with a given base and size.
+    const fn new(base: Paddr, size: Paddr) -> Self {
+        MmioAllocator {
+            base,
+            size,
+            offset: 0,
+        }
+    }
+
+    /// Allocates a physical address range with the specified alignment and size.
+    fn allocate(&mut self, layout: Layout) -> Option<Paddr> {
+        let align = layout.align();
+        let size = layout.size();
+
+        let current = self.base + self.offset;
+        let aligned = current.align_up(align);
+        let aligned_offset = aligned - self.base;
+
+        if aligned_offset + size > self.size {
+            return None;
+        }
+        self.offset = aligned_offset + size;
+        Some(aligned)
+    }
+}
+
+static MMIO_ALLOCATOR: Once<SpinLock<MmioAllocator>> = Once::new();
+
+/// Initializes the MMIO allocator from the PCIe node's "ranges" property.
+fn init_mmio_allocator_from_fdt(node: &FdtNode) {
+    let ranges = node
+        .property("ranges")
+        .expect("Missing 'ranges' property in PCIe node");
+    let data = ranges.value;
+
+    let entry_size = 7 * 4; // Each entry is 7 x u32 = 28 bytes
+    let mut i = 0;
+
+    while i + entry_size <= data.len() {
+        let pci_space = u32::from_be_bytes(data[i..i + 4].try_into().unwrap());
+        let _pci_addr = u64::from_be_bytes(data[i + 4..i + 12].try_into().unwrap());
+        let cpu_addr = u64::from_be_bytes(data[i + 12..i + 20].try_into().unwrap());
+        let size = u64::from_be_bytes(data[i + 20..i + 28].try_into().unwrap());
+
+        // Only initialize with memory-type region
+        if (pci_space >> 24) == 0x2 {
+            MMIO_ALLOCATOR
+                .call_once(|| SpinLock::new(MmioAllocator::new(cpu_addr as usize, size as usize)));
+            break;
+        }
+
+        i += entry_size;
+    }
+}
+
+/// Allocates an MMIO address range using the global allocator.
+pub(crate) fn alloc_mmio(layout: Layout) -> Option<Paddr> {
+    MMIO_ALLOCATOR.get().unwrap().lock().allocate(layout)
+}
+
+pub(crate) fn msix_message_address() -> Option<u64> {
+    ostd::arch::irq::IRQ_CHIP
+        .get()
+        .and_then(|irq_chip| irq_chip.msi_address())
+        .map(|address| address as u64)
+}
+
+pub(crate) fn enable_msix_irq(irq_num: u8) {
+    ostd::arch::irq::IRQ_CHIP
+        .get()
+        .unwrap()
+        .enable_msi(irq_num)
+        .expect("failed to enable IMSIC interrupt identity");
+}
+
+pub(crate) fn construct_remappable_msix_data(_remapping_index: u32, irq_num: u8) -> u32 {
+    irq_num as u32
+}
+
+pub(crate) fn construct_remappable_msix_address(remapping_index: u32) -> u64 {
+    assert_eq!(remapping_index, 0);
+    msix_message_address().expect("MSI remapping requires a supervisor IMSIC")
 }

@@ -8,7 +8,10 @@ use ostd::{Error, Result, io::IoMem, irq::IrqLine, mm::VmIoOnce};
 
 use crate::{
     PciDeviceLocation,
-    arch::{MSIX_DEFAULT_MSG_ADDR, construct_remappable_msix_address},
+    arch::{
+        construct_remappable_msix_address, construct_remappable_msix_data, enable_msix_irq,
+        msix_message_address,
+    },
     cfg_space::{BarAccess, Command, PciCommonCfgOffset},
     common_device::{BarManager, PciCommonDevice},
 };
@@ -86,11 +89,12 @@ impl CapabilityMsixData {
         let table_size = (raw_cap.msg_ctrl & 0b11_1111_1111) + 1;
 
         // Set the message address and disable all MSI-X vectors.
-        let message_address = MSIX_DEFAULT_MSG_ADDR;
-        let message_upper_address = 0u32;
+        let message_address = msix_message_address().ok_or(Error::NotEnoughResources)?;
+        let message_lower_address = message_address as u32;
+        let message_upper_address = (message_address >> 32) as u32;
         for i in 0..table_size {
             table_bar
-                .write_once((16 * i) as usize + table_offset, &message_address)
+                .write_once((16 * i) as usize + table_offset, &message_lower_address)
                 .unwrap();
             table_bar
                 .write_once((16 * i + 4) as usize + table_offset, &message_upper_address)
@@ -142,15 +146,22 @@ impl CapabilityMsixData {
             return;
         }
 
-        // If interrupt remapping is enabled, then we need to change the value of the message address.
+        // Ensure the target interrupt identity is enabled before unmasking the MSI-X vector.
+        enable_msix_irq(irq.num());
         if let Some(remapping_index) = irq.remapping_index() {
             let address = construct_remappable_msix_address(remapping_index as u32);
+            let address_low = address as u32;
+            let address_high = (address >> 32) as u32;
 
             self.table_bar
-                .write_once((16 * index) as usize + self.table_offset, &address)
+                .write_once((16 * index) as usize + self.table_offset, &address_low)
                 .unwrap();
             self.table_bar
-                .write_once((16 * index + 8) as usize + self.table_offset, &0)
+                .write_once((16 * index + 4) as usize + self.table_offset, &address_high)
+                .unwrap();
+            let data = construct_remappable_msix_data(remapping_index as u32, irq.num());
+            self.table_bar
+                .write_once((16 * index + 8) as usize + self.table_offset, &data)
                 .unwrap();
         } else {
             self.table_bar

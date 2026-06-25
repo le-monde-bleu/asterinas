@@ -186,8 +186,16 @@ pub(crate) fn alloc_mmio(layout: Layout) -> Option<Paddr> {
     MMIO_ALLOCATOR.get().unwrap().lock().allocate(layout)
 }
 
-pub(crate) const MSIX_DEFAULT_MSG_ADDR: u32 = 0x2ff0_0000;
+pub(crate) fn msix_message_address() -> Option<u64> {
+    Some(0x2ff0_0000)
+}
 
-pub(crate) fn construct_remappable_msix_address(_remapping_index: u32) -> u32 {
+pub(crate) fn enable_msix_irq(_irq_num: u8) {}
+
+pub(crate) fn construct_remappable_msix_data(_remapping_index: u32, _irq_num: u8) -> u32 {
+    0
+}
+
+pub(crate) fn construct_remappable_msix_address(_remapping_index: u32) -> u64 {
     unimplemented!()
 }
