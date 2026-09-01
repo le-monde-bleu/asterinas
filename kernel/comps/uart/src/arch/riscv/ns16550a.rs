@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use alloc::string::ToString;
-
 use fdt::node::FdtNode;
 use ostd::{
     arch::irq::{IRQ_CHIP, InterruptSourceInFdt, MappedIrqLine},
@@ -13,10 +11,7 @@ use ostd::{
 };
 use spin::Once;
 
-use crate::{
-    CONSOLE_NAME,
-    console::{Uart, UartConsole},
-};
+use crate::console::{Uart, UartConsole};
 
 /// Access to serial registers via `IoMem`.
 struct SerialAccess {
@@ -82,7 +77,7 @@ pub(super) fn init(fdt_node: FdtNode) {
 
     let uart_console = UartConsole::new(SpinLock::new(uart));
 
-    aster_console::register_device(CONSOLE_NAME.to_string(), uart_console.clone());
+    aster_console::register_serial_console(uart_console.clone());
 
     let cloned_uart_console = uart_console.clone();
     irq_line.on_active(move |_| cloned_uart_console.trigger_input_callbacks());

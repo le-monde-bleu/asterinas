@@ -66,14 +66,8 @@ pub(super) fn serial0_device() -> Option<&'static Arc<Tty<SerialDriver>>> {
 }
 
 pub(super) fn init_in_first_process() -> Result<()> {
-    let devices = aster_console::all_devices();
-
     // Initialize the `ttyS0` device if the serial console is available.
-
-    let serial_console = devices
-        .iter()
-        .find(|(name, _)| name.as_str() == aster_uart::CONSOLE_NAME)
-        .map(|(_, device)| device.clone());
+    let serial_console = aster_console::serial_console();
 
     if let Some(serial_console) = serial_console {
         let driver = SerialDriver {

@@ -29,6 +29,24 @@ pub trait AnyConsoleDevice: Send + Sync + Any + Debug {
     fn register_callback(&self, callback: &'static ConsoleCallback);
 }
 
+const SERIAL_CONSOLE_REGISTRY_NAME: &str = "Uart-Console";
+
+/// Registers a console device as the serial TTY backend.
+pub fn register_serial_console(device: Arc<dyn AnyConsoleDevice>) {
+    register_device(SERIAL_CONSOLE_REGISTRY_NAME.into(), device);
+}
+
+/// Returns the console device registered as the serial TTY backend.
+pub fn serial_console() -> Option<Arc<dyn AnyConsoleDevice>> {
+    COMPONENT
+        .get()
+        .unwrap()
+        .console_device_table
+        .lock()
+        .get(SERIAL_CONSOLE_REGISTRY_NAME)
+        .cloned()
+}
+
 pub fn register_device(name: String, device: Arc<dyn AnyConsoleDevice>) {
     COMPONENT
         .get()

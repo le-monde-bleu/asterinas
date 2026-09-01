@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use alloc::string::ToString;
-
 use ostd::{
     arch::{
         irq::{IRQ_CHIP, MappedIrqLine},
@@ -11,10 +9,7 @@ use ostd::{
 };
 use spin::Once;
 
-use crate::{
-    CONSOLE_NAME,
-    console::{Uart, UartConsole},
-};
+use crate::console::{Uart, UartConsole};
 
 /// ISA interrupt number for UART serial.
 // FIXME: The interrupt number should be retrieved from the ACPI table instead of being hard-coded.
@@ -40,7 +35,7 @@ pub(super) fn init() {
 
     let uart_console = UartConsole::new(uart);
 
-    aster_console::register_device(CONSOLE_NAME.to_string(), uart_console.clone());
+    aster_console::register_serial_console(uart_console.clone());
 
     irq_line.on_active(move |_| uart_console.trigger_input_callbacks());
     IRQ_LINE.call_once(move || irq_line);
